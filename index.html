@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mumbai Rainfall Visualization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div id="rain-display" class="bg-white rounded-lg shadow-lg p-6 w-full max-w-3xl">
+        <h1 class="text-2xl font-bold text-center mb-4">Mumbai Rainfall Visualization</h1>
+        <div id="year-data" class="mb-4"></div>
+    </div>
+
+    <script>
+    let data;
+    let currentYearIndex;
+    let maxRainfall = 0;
+
+    const margin = {top: 20, right: 20, bottom: 30, left: 40};
+    const width = 600 - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    const svg = d3.select("#year-data")
+        .append("svg")
+        .attr("viewBox", `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    Papa.parse('https://raw.githubusercontent.com/mtrejo0/mumbai-rain-viz/main/mumbai-monthly-rains.csv', {
+        download: true,
+        header: true,
+        complete: function(results) {
+            data = results.data;
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            maxRainfall = d3.max(data, year => d3.max(months, month => +year[month]));
+            currentYearIndex = 0;
+            displayYear(currentYearIndex);
+            setupScroll();
+        }
+    });
+
+    function displayYear(index) {
+        const yearData = data[index];
+        const year = yearData.Year;
+        
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthlyData = months.map(month => ({
+            month: month,
+            rainfall: +yearData[month]
+        }));
+
+        svg.selectAll("*").remove();
+
+        const x = d3.scaleBand()
+            .range([0, width])
+            .padding(0.1);
+
+        const y = d3.scaleLinear()
+            .range([height, 0]);
+
+        x.domain(months);
+        y.domain([0, maxRainfall]);
+
+        svg.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x))
+            .selectAll("text")
+            .attr("transform", "rotate(-45)")
+            .style("text-anchor", "end");
+
+        svg.append("g")
+            .call(d3.axisLeft(y));
+
+        svg.selectAll(".bar")
+            .data(monthlyData)
+            .enter().append("rect")
+            .attr("class", "bar")
+            .attr("x", d => x(d.month))
+            .attr("width", x.bandwidth())
+            .attr("y", d => y(d.rainfall))
+            .attr("height", d => height - y(d.rainfall))
+            .attr("fill", "rgb(59, 130, 246)");
+
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", 0 - (margin.top / 2) + 5)
+            .attr("text-anchor", "middle")
+            .style("font-size", "16px")
+            .text(year);
+    }
+
+    function setupScroll() {
+        window.addEventListener('wheel', (event) => {
+            if (event.deltaY > 0 && currentYearIndex < data.length - 1) {
+                currentYearIndex++;
+                displayYear(currentYearIndex);
+            } else if (event.deltaY < 0 && currentYearIndex > 0) {
+                currentYearIndex--;
+                displayYear(currentYearIndex);
+            }
+        });
+    }
+    </script>
+</body>
+</html>
