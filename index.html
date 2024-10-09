@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mumbai Rainfall Visualization</title>
+    <title>Mumbai Rainfall Visualization 1901 to 2023</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
     <div id="rain-display" class="bg-white rounded-lg shadow-lg p-6 w-full max-w-3xl mb-8">
-        <h1 class="text-2xl font-bold text-center mb-4">Mumbai Rainfall Visualization</h1>
+        <h1 class="text-2xl font-bold text-center mb-4">Mumbai Rainfall Visualization 1901 to 2023</h1>
         <div id="year-data" class="mb-4"></div>
         <div class="flex justify-center space-x-4 mb-4">
             <button id="prev-year" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">←</button>
@@ -32,10 +32,15 @@
         <div id="total-rainfall"></div>
     </div>
 
+    <div class="mt-8 text-center text-sm text-gray-600">
+        <p>Data source: <a href="https://www.kaggle.com/datasets/macaronimutton/mumbai-rainfall-data" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700">Mumbai Rainfall Data on Kaggle</a></p>
+    </div>
+
     <script>
     let data;
     let currentYearIndex;
     let maxRainfall = 0;
+    let autoPlayInterval;
 
     const margin = {top: 20, right: 20, bottom: 30, left: 40};
     const width = 600 - margin.left - margin.right;
@@ -60,6 +65,7 @@
             setupButtons();
             createMonthlyTrends(data, months);
             createYearlyTrends(data, months);
+            startAutoPlay(); // Start auto-play after initialization
         }
     });
 
@@ -123,10 +129,32 @@
             currentYearIndex = parseInt(this.value);
             displayYear(currentYearIndex);
         });
+
+        // Start auto-play
+        startAutoPlay();
+    }
+
+    function startAutoPlay() {
+        autoPlayInterval = setInterval(() => {
+            if (currentYearIndex < data.length - 1) {
+                currentYearIndex++;
+            } else {
+                currentYearIndex = 0; // Reset to the beginning when reaching the end
+            }
+            document.getElementById('year-slider').value = currentYearIndex;
+            displayYear(currentYearIndex);
+        }, 250); // 500 milliseconds = 0.5 seconds
+    }
+
+    function stopAutoPlay() {
+        clearInterval(autoPlayInterval);
+        autoPlayInterval = null;
+        document.getElementById('play-pause').textContent = '▶️';
     }
 
     function setupButtons() {
         document.getElementById('prev-year').addEventListener('click', () => {
+            stopAutoPlay();
             if (currentYearIndex > 0) {
                 currentYearIndex--;
                 document.getElementById('year-slider').value = currentYearIndex;
@@ -135,13 +163,20 @@
         });
 
         document.getElementById('next-year').addEventListener('click', () => {
+            stopAutoPlay();
             if (currentYearIndex < data.length - 1) {
                 currentYearIndex++;
                 document.getElementById('year-slider').value = currentYearIndex;
                 displayYear(currentYearIndex);
             }
         });
+
+      
+        // Add event listener to the slider to stop auto-play when manually changed
+        document.getElementById('year-slider').addEventListener('input', stopAutoPlay);
     }
+
+  
 
     function createMonthlyTrends(data, months) {
         const trendContainer = d3.select("#monthly-trends");
