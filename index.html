@@ -8,10 +8,28 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
-    <div id="rain-display" class="bg-white rounded-lg shadow-lg p-6 w-full max-w-3xl">
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
+    <div id="rain-display" class="bg-white rounded-lg shadow-lg p-6 w-full max-w-3xl mb-8">
         <h1 class="text-2xl font-bold text-center mb-4">Mumbai Rainfall Visualization</h1>
         <div id="year-data" class="mb-4"></div>
+        <div class="flex justify-center space-x-4 mb-4">
+            <button id="prev-year" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">←</button>
+            <input type="range" id="year-slider" class="w-64" min="0" max="0" value="0">
+            <button id="next-year" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">→</button>
+        </div>
+        <div class="text-center">
+            <p>Use the slider to change the year!</p>
+        </div>
+    </div>
+
+    <div id="monthly-trends" class="grid grid-cols-3 gap-4 w-full max-w-6xl">
+        <!-- Monthly trend graphs will be inserted here -->
+    </div>
+
+    <div id="yearly-trends" class="w-full max-w-6xl mt-8">
+        <h2 class="text-xl font-bold text-center mb-4">Yearly Rainfall Trends</h2>
+        <div id="average-rainfall"></div>
+        <div id="total-rainfall"></div>
     </div>
 
     <script>
@@ -37,8 +55,11 @@
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             maxRainfall = d3.max(data, year => d3.max(months, month => +year[month]));
             currentYearIndex = 0;
+            setupSlider();
             displayYear(currentYearIndex);
-            setupScroll();
+            setupButtons();
+            createMonthlyTrends(data, months);
+            createYearlyTrends(data, months);
         }
     });
 
@@ -92,16 +113,244 @@
             .text(year);
     }
 
-    function setupScroll() {
-        window.addEventListener('wheel', (event) => {
-            if (event.deltaY > 0 && currentYearIndex < data.length - 1) {
-                currentYearIndex++;
-                displayYear(currentYearIndex);
-            } else if (event.deltaY < 0 && currentYearIndex > 0) {
+    function setupSlider() {
+        const slider = document.getElementById('year-slider');
+        slider.min = 0;
+        slider.max = data.length - 1;
+        slider.value = currentYearIndex;
+
+        slider.addEventListener('input', function() {
+            currentYearIndex = parseInt(this.value);
+            displayYear(currentYearIndex);
+        });
+    }
+
+    function setupButtons() {
+        document.getElementById('prev-year').addEventListener('click', () => {
+            if (currentYearIndex > 0) {
                 currentYearIndex--;
+                document.getElementById('year-slider').value = currentYearIndex;
                 displayYear(currentYearIndex);
             }
         });
+
+        document.getElementById('next-year').addEventListener('click', () => {
+            if (currentYearIndex < data.length - 1) {
+                currentYearIndex++;
+                document.getElementById('year-slider').value = currentYearIndex;
+                displayYear(currentYearIndex);
+            }
+        });
+    }
+
+    function createMonthlyTrends(data, months) {
+        const trendContainer = d3.select("#monthly-trends");
+        const trendWidth = 300;
+        const trendHeight = 200;
+        const trendMargin = {top: 20, right: 20, bottom: 30, left: 40};
+
+        // Calculate the maximum rainfall across all months
+        const maxRainfall = d3.max(months.flatMap(month =>
+            data.map(d => +d[month])
+        ));
+
+        months.forEach(month => {
+            const monthData = data.map(d => ({year: +d.Year, rainfall: +d[month]}))
+                .filter(d => d.year >= 1900);  // Filter data starting from 1900
+
+            const svg = trendContainer.append("div")
+                .attr("class", "trend-chart")
+                .append("svg")
+                .attr("viewBox", `0 0 ${trendWidth} ${trendHeight}`)
+                .append("g")
+                .attr("transform", `translate(${trendMargin.left},${trendMargin.top})`);
+
+            const x = d3.scaleLinear()
+                .domain([1900, d3.max(monthData, d => d.year)])
+                .range([0, trendWidth - trendMargin.left - trendMargin.right]);
+
+            const y = d3.scaleLinear()
+                .domain([0, maxRainfall])  // Use the global maximum rainfall
+                .range([trendHeight - trendMargin.top - trendMargin.bottom, 0]);
+
+            svg.append("g")
+                .attr("transform", `translate(0,${trendHeight - trendMargin.top - trendMargin.bottom})`)
+                .call(d3.axisBottom(x).ticks(5).tickFormat(d3.format("d")));
+
+            svg.append("g")
+                .call(d3.axisLeft(y));
+
+            const line = d3.line()
+                .x(d => x(d.year))
+                .y(d => y(d.rainfall));
+
+            svg.append("path")
+                .datum(monthData)
+                .attr("fill", "none")
+                .attr("stroke", "steelblue")
+                .attr("stroke-width", 1.5)
+                .attr("d", line);
+
+            // Calculate regression
+            const regression = calculateRegression(monthData, 'year', "rainfall");
+
+            // Draw regression line
+            const regressionLine = d3.line()
+                .x(d => x(d.year))
+                .y(d => y(regression.slope * d.year + regression.intercept));
+
+            svg.append("path")
+                .datum(monthData)
+                .attr("fill", "none")
+                .attr("stroke", "red")
+                .attr("stroke-width", 1.5)
+                .attr("stroke-dasharray", "5,5")
+                .attr("d", regressionLine);
+
+            svg.append("text")
+                .attr("x", (trendWidth - trendMargin.left - trendMargin.right) / 2)
+                .attr("y", 0 - (trendMargin.top / 2))
+                .attr("text-anchor", "middle")
+                .style("font-size", "14px")
+                .text(month);
+
+            // Add regression equation
+            const m = regression.slope.toFixed(2);
+            const b = regression.intercept.toFixed(2);
+            const equation = `y = ${m}x + ${b}`;
+            svg.append("text")
+                .attr("x", (trendWidth - trendMargin.left - trendMargin.right) / 2)
+                .attr("y", 10 - (trendMargin.top / 2))
+                .attr("text-anchor", "middle")
+                .style("font-size", "12px")
+                .text(equation);
+        });
+    }
+
+    function calculateRegression(data, xKey, yKey) {
+    const n = data.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+
+    for (let i = 0; i < n; i++) {
+        const x = data[i][xKey];
+        const y = data[i][yKey];
+        if (!isNaN(x) && !isNaN(y)) {
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumXX += x * x;
+        }
+    }
+
+    const denominator = (n * sumXX - sumX * sumX);
+    if (denominator === 0) {
+        console.error("Division by zero in regression calculation");
+        return { slope: NaN, intercept: NaN };
+    }
+
+    const slope = (n * sumXY - sumX * sumY) / denominator;
+    const intercept = (sumY - slope * sumX) / n;
+
+    console.log(`Regression for ${xKey} vs ${yKey}:`, { slope, intercept, n });
+
+    return { slope, intercept };
+}
+
+
+    function createYearlyTrends(data, months) {
+        const yearlyData = data.map(d => {
+            const year = +d.Year;
+            const totalRainfall = months.reduce((sum, month) => {
+                const value = parseFloat(d[month]);
+                return isNaN(value) ? sum : sum + value;
+            }, 0);
+            const averageRainfall = totalRainfall / months.length;
+            return { year, totalRainfall, averageRainfall };
+        }).filter(d => d.year >= 1900 && !isNaN(d.totalRainfall) && !isNaN(d.averageRainfall));
+
+        console.log("Yearly data:", yearlyData);
+
+        createYearlyTrendChart(yearlyData, "average-rainfall", "Average Rainfall per Year", d => d.averageRainfall);
+        createYearlyTrendChart(yearlyData, "total-rainfall", "Total Rainfall per Year", d => d.totalRainfall);
+    }
+
+    function createYearlyTrendChart(data, elementId, title, valueAccessor) {
+        console.log("Data for", title, ":", data);
+
+        const margin = { top: 20, right: 20, bottom: 30, left: 50 };
+        const width = 800 - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+
+        const svg = d3.select(`#${elementId}`)
+            .append("svg")
+            .attr("viewBox", `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const x = d3.scaleLinear()
+            .domain(d3.extent(data, d => d.year))
+            .range([0, width]);
+
+        const y = d3.scaleLinear()
+            .domain([0, d3.max(data, valueAccessor)])
+            .range([height, 0]);
+
+        svg.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x).tickFormat(d3.format("d")));
+
+        svg.append("g")
+            .call(d3.axisLeft(y));
+
+        const line = d3.line()
+            .x(d => x(d.year))
+            .y(d => y(valueAccessor(d)));
+
+        svg.append("path")
+            .datum(data)
+            .attr("fill", "none")
+            .attr("stroke", "steelblue")
+            .attr("stroke-width", 1.5)
+            .attr("d", line);
+
+        // Calculate regression
+        const yKey = title.toLowerCase().includes("average") ? "averageRainfall" : "totalRainfall";
+        const regression = calculateRegression(data, "year", yKey);
+
+        // Draw regression line only if the calculation is valid
+        if (!isNaN(regression.slope) && !isNaN(regression.intercept)) {
+            const regressionLine = d3.line()
+                .x(d => x(d.year))
+                .y(d => y(regression.slope * d.year + regression.intercept));
+
+            svg.append("path")
+                .datum(data)
+                .attr("fill", "none")
+                .attr("stroke", "red")
+                .attr("stroke-width", 1.5)
+                .attr("stroke-dasharray", "5,5")
+                .attr("d", regressionLine);
+
+            // Add regression equation
+            const m = regression.slope.toFixed(2);
+            const b = regression.intercept.toFixed(2);
+            const equation = `y = ${m}x + ${b}`;
+            svg.append("text")
+                .attr("x", width / 2)
+                .attr("y", 40 - (margin.top / 2))
+                .attr("text-anchor", "middle")
+                .style("font-size", "12px")
+                .text(equation);
+        } else {
+            console.error("Invalid regression result for", title);
+        }
+
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", 10 - (margin.top / 2))
+            .attr("text-anchor", "middle")
+            .style("font-size", "16px")
+            .text(title);
     }
     </script>
 </body>
